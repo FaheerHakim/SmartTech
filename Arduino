@@ -1,1 +1,181 @@
 
+#include <ESP8266WiFi.h>
+#include <Servo.h>
+Servo myServo;
+
+const char* ssid = "Hamada";
+const char* password = "mohakim9";
+
+WiFiServer server(80);
+
+String header;
+
+String outputState = "locked";
+
+unsigned long currentTime = millis();
+
+unsigned long previousTime = 0;
+
+const long timeoutTime = 2000;
+
+const int trigPin = 15;
+const int echoPin = 16;
+
+
+int distance;
+void setup() {
+
+Serial.begin(115200);
+Serial.println();
+
+pinMode(trigPin, OUTPUT);
+
+digitalWrite(trigPin, LOW);
+
+pinMode(echoPin, INPUT);
+
+myServo.attach(4);
+
+Serial.print("Connecting to ");
+Serial.println(ssid);
+
+WiFi.begin(ssid, password);
+
+while (WiFi.status() != WL_CONNECTED) {
+delay(500);
+Serial.print(".");
+}
+
+Serial.println("");
+Serial.println("WiFi connected.");
+Serial.println("IP address: ");
+Serial.println(WiFi.localIP());
+server.begin();
+}
+
+void loop(){
+
+WiFiClient client = server.available();
+
+if (client) { 
+Serial.println("New Client.");
+String currentLine = "";
+
+currentTime = millis();
+previousTime = currentTime;
+while (client.connected() && currentTime - previousTime <= timeoutTime) {
+
+currentTime = millis();
+if (client.available()) {
+char c = client.read(); 
+Serial.write(c); 
+header += c;
+
+if (c == '\n') {
+  
+if (currentLine.length() == 0) {
+client.println("HTTP/1.1 200 OK");
+client.println("Content-type:text/html");
+client.println("Connection: close");
+client.println();
+
+if (header.indexOf("GET /open") >= 0) {
+Serial.println("GPIO open");
+outputState = "open";
+myServo.write(0);
+
+}else if (header.indexOf("GET /locked") >= 0) {
+Serial.println("GPIO locked");
+outputState = "locked";
+myServo.write(180);
+}
+
+client.println("<!DOCTYPE html><html>");
+client.println("<head><meta name=\"viewport\" content=\"width=device-width,
+initial-scale=1\">");
+client.println("<link rel=\"icon\" href=\"data:,\">");
+
+client.println("<style>html { font-family: Helvetica; display: inline-block; margin: 0px
+auto; text-align: center;}");
+client.println(".button { background-color: #195B6A; border: none; color: white;
+padding: 16px 40px;");
+client.println("text-decoration: none; font-size: 30px; margin: 2px; cursor: pointer;}");
+client.println(".free {background-color: #03AC13; color: white; margin: 10px 150px;
+height: 100px;}");
+client.println(".reserved {background-color: #FF0000;}");
+client.println(".button2 {background-color: #77878A;}</style></head>");
+client.println("<body><h1>Smart fiets parking</h1>");
+
+digitalWrite(trigPin, HIGH);
+
+delayMicroseconds(10);
+
+digitalWrite(trigPin, LOW);
+
+delayMicroseconds(10);
+
+unsigned int echo;
+echo = pulseIn(echoPin, HIGH);
+
+Serial.print("De afstand tot het object is ");
+distance= ((echo / 2.0) * 0.03435 ); 
+Serial.print(distance);
+Serial.println("cm.");
+
+client.println("<div class=\" free reserved\"><h2>Parking 200 is
+reserved</h2></div>");
+client.println("<h3>Lock 200 is locked </h3>");
+client.println("<p><a href=""><button class=\"button\">OPEN</button></a></p>");
+client.println("<div class=\" free reserved\"><h2>Parking 201 is
+reserved</h2></div>");
+client.println("<h3>Lock 201 is locked </h3>");
+client.println("<p><a href=""><button class=\"button\">OPEN</button></a></p>");
+
+
+if ( distance <20){
+client.println("<div class=\"free reserved\"><h2>Parking 202 is
+reserved</h2></div>");
+}else{
+client.println("<div class=\"free\"><h2>Parking 202 is free</h2></div>");
+
+if (outputState =="open"){
+  
+client.println("<h3>Lock 202 is locked </h3>");
+client.println("<p><a href=\"/locked\"><button
+class=\"button\">OPEN</button></a></p>");
+
+}else{
+  
+client.println("<h3>Lock 202 is open </h3>");
+client.println("<p><a href=\"/open\"><button class=\"button button2\">LOCK
+UP</button></a></p>");
+
+}
+
+client.println("</body></html>");
+
+client.println();
+
+break;
+
+} else { 
+  
+currentLine = "";
+}
+
+} else if (c != '\r') {
+currentLine += c;
+}
+
+}
+
+  }
+}
+
+
+header = "";
+
+client.stop();
+Serial.println("Client disconnected.");
+Serial.println("");
+}
